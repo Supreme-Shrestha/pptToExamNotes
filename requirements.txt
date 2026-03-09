@@ -5,6 +5,11 @@ markdown>=3.6
 weasyprint>=62.0
 python-dotenv>=1.0.0
 
+# OCR — text extraction from image-based PDFs (GPU-accelerated)
+easyocr>=1.7.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
 # LLM client (used by vllm, ollama, openai, groq, together backends)
 openai>=1.0.0
 
