@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from extract_text import extract_text
 from generate_qna import generate_qna_markdown
 from generate_pdf import md_to_pdf
+from agent import run_research_agent
 
 # ──────────────────────────────────────────────
 # Config
@@ -104,11 +105,27 @@ def process_file(target: dict, force: bool = False) -> bool:
 
     log.info(f"  → Extracted {len(raw_text)} characters")
 
+    # Step 1.5 — Agentic Research
+    log.info("  → Running autonomous research agent to fill gaps …")
+    t0 = time.time()
+    try:
+        research_notes = run_research_agent(subject, chapter, raw_text)
+    except Exception as e:
+        log.error(f"  ✗ Research failed (proceeding without it): {e}")
+        research_notes = ""
+    elapsed = time.time() - t0
+    log.info(f"  → Research finished in {elapsed:.1f}s ({len(research_notes)} chars)")
+    
+    # Combine original text with research notes
+    combined_content = raw_text
+    if research_notes.strip():
+        combined_content += "\n\n" + "="*50 + "\nSUPPLEMENTARY RESEARCH NOTES:\n" + "="*50 + "\n\n" + research_notes
+
     # Step 2 — LLM QNA generation
     log.info("  → Generating QNA via LLM …")
     t0 = time.time()
     try:
-        md_content = generate_qna_markdown(subject, chapter, raw_text)
+        md_content = generate_qna_markdown(subject, chapter, combined_content)
     except Exception as e:
         log.error(f"  ✗ LLM generation failed: {e}")
         return False
@@ -136,7 +153,7 @@ def main():
     parser = argparse.ArgumentParser(description="PPT-to-Exam-Notes QNA Pipeline")
     parser.add_argument("--subject", type=str, default=None, help="Process a single subject folder")
     parser.add_argument("--force", action="store_true", help="Re-generate even if QNA PDF already exists")
-    parser.add_argument("--provider", type=str, default=None, help="LLM provider: gemini | openai")
+    parser.add_argument("--provider", type=str, default=None, help="LLM provider: vllm | ollama | gemini | openai | anthropic | groq | together")
     args = parser.parse_args()
 
     if args.provider:
