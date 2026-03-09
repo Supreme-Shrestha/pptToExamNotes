@@ -35,12 +35,24 @@ SYSTEM_PROMPT = textwrap.dedent("""\
     self-sufficient Question and Answer (QNA) study guide.
 
     Rules:
+    • You MUST go through the material PAGE BY PAGE / SLIDE BY SLIDE. Every
+      page marker ("--- Page N ---" or "--- Slide N ---") represents content
+      that MUST be covered. Do NOT skip any page.
     • If the provided material is incomplete or missing necessary foundational
       context, you MUST independently fill in the gaps using your broad knowledge
       base to fully cover the implied chapter topics.
-    • Cover every major concept mentioned or implied by the material.
+    • Cover every major concept, definition, formula, algorithm, example, and
+      comparison mentioned or implied by the material.
+    • When you see "[Visual: ...]" annotations, these represent diagrams,
+      charts, flowcharts, or figures. You MUST infer what these visuals likely
+      depict based on the surrounding text and chapter context, and generate
+      questions about them (e.g., "Explain the architecture shown in the
+      block diagram for..." or "Draw and label the flowchart for...").
+    • When the OCR text looks garbled or has unusual characters, use your
+      knowledge to reconstruct the intended meaning from context.
     • Answers must be detailed, academically rigorous, and directly useful for
-      exam preparation.
+      exam preparation. A student who memorises these answers should be able to
+      write complete exam answers without needing any other resource.
     • Output ONLY clean Markdown.  Use Headings (#, ##, ###), bold, lists, and
       code blocks where appropriate.  Do NOT wrap the entire output in a code
       fence.
@@ -58,18 +70,32 @@ def build_user_prompt(subject_name: str, chapter_name: str, extracted_text: str)
         \"\"\"
 
         **Your Task**:
-        1. Identify every core topic discussed or implied in this material.
-        2. Complete any missing concepts, definitions, formulas, diagrams
-           descriptions, or broad context necessary for a student to fully
-           understand the chapter.
-        3. Generate a comprehensive QNA guide organised as:
+        1. Read the material THOROUGHLY from Page/Slide 1 to the last page.
+           Every single page must contribute at least one question.
+        2. Identify every core topic discussed or implied in this material.
+        3. For any [Visual: ...] annotations, infer the diagram content from
+           context and create questions that ask the student to explain, draw,
+           or compare those visuals.
+        4. Complete any missing concepts, definitions, formulas, derivations,
+           algorithms, comparisons, or broad context necessary for a student
+           to fully understand the chapter.
+        5. Generate a comprehensive QNA guide organised as:
            - **Basic Concepts & Definitions**
            - **Core Theory & Principles**
+           - **Detailed Explanations & Comparisons**
+           - **Diagrams & Visual Concepts** (describe/explain diagrams)
            - **Advanced / Applied Topics**
            - **Numerical / Practical Problems** (if applicable)
-        4. Each question should be followed by a detailed, exam-ready answer.
-        5. Aim for at least 25-40 high-quality questions covering the full breadth
-           of the chapter.
+           - **Previous Exam Style Questions**
+        6. Each answer must be COMPLETE and SELF-CONTAINED — long enough that
+           a student can write it directly in an exam. Include examples,
+           formulas, and step-by-step explanations where applicable.
+        7. Aim for at least 30-50 high-quality questions covering the FULL
+           breadth of the chapter. Do NOT stop early.
+
+        At the very end, add a section called **## Coverage Checklist** that
+        lists every page/slide number and the topic(s) covered from it, so the
+        student can verify nothing was missed.
 
         Output the result strictly in clean Markdown format.
     """)
@@ -99,7 +125,7 @@ def _call_chat_api(
             {"role": "user", "content": user},
         ],
         "temperature": 0.4,
-        "max_tokens": 16384,
+        "max_tokens": 32768,
     }
 
     resp = requests.post(url, headers=headers, json=payload, timeout=600)
