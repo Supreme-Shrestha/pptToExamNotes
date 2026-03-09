@@ -1,6 +1,18 @@
 """
-generate_qna.py — Uses an LLM (Gemini or OpenAI) to transform extracted
-lecture text into a comprehensive QNA study guide in Markdown.
+generate_qna.py — Uses an LLM to transform extracted lecture text into a
+comprehensive QNA study guide in Markdown.
+
+Supported providers:
+  LOCAL (default — no API key needed):
+  • vllm     — Local vLLM server (recommended for A100 GPUs)
+  • ollama   — Local Ollama server
+
+  CLOUD (API key required):
+  • gemini   — Google Gemini
+  • openai   — OpenAI
+  • anthropic— Anthropic Claude
+  • groq     — Groq (fast cloud Llama)
+  • together — Together AI
 """
 import os
 import sys
@@ -61,10 +73,76 @@ def build_user_prompt(subject_name: str, chapter_name: str, extracted_text: str)
 
 
 # ──────────────────────────────────────────────
-# LLM Backends
+# Helper: OpenAI-compatible caller
+# ──────────────────────────────────────────────
+
+def _call_openai_compatible(
+    system: str, user: str, base_url: str, api_key: str, model: str
+) -> str:
+    """Generic caller for any OpenAI-compatible API endpoint."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.4,
+        max_tokens=16384,
+    )
+    return response.choices[0].message.content
+
+
+# ──────────────────────────────────────────────
+# LOCAL providers (no API key needed)
+# ──────────────────────────────────────────────
+
+def _call_vllm(system: str, user: str) -> str:
+    """Local vLLM server — recommended for A100 GPUs.
+
+    Start vLLM before running the pipeline:
+        python -m vllm.entrypoints.openai.api_server \\
+            --model Qwen/Qwen2.5-72B-Instruct-AWQ \\
+            --quantization awq \\
+            --max-model-len 32768 \\
+            --gpu-memory-utilization 0.95 \\
+            --port 8000
+    """
+    base_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
+    model = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-72B-Instruct-AWQ")
+    return _call_openai_compatible(
+        system, user,
+        base_url=base_url,
+        api_key="not-needed",
+        model=model,
+    )
+
+
+def _call_ollama(system: str, user: str) -> str:
+    """Local Ollama server.
+
+    Start Ollama before running the pipeline:
+        ollama pull qwen2.5:72b
+        ollama serve
+    """
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:72b")
+    return _call_openai_compatible(
+        system, user,
+        base_url=base_url,
+        api_key="ollama",
+        model=model,
+    )
+
+
+# ──────────────────────────────────────────────
+# CLOUD providers (API key required)
 # ──────────────────────────────────────────────
 
 def _call_gemini(system: str, user: str) -> str:
+    """Google Gemini via the google-generativeai SDK."""
     import google.generativeai as genai
 
     api_key = os.getenv("GEMINI_API_KEY")
@@ -73,7 +151,7 @@ def _call_gemini(system: str, user: str) -> str:
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
+        model_name=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
         system_instruction=system,
     )
     response = model.generate_content(
@@ -87,28 +165,80 @@ def _call_gemini(system: str, user: str) -> str:
 
 
 def _call_openai(system: str, user: str) -> str:
-    from openai import OpenAI
-
+    """OpenAI (GPT-4o) via the openai SDK."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not set in environment / .env")
 
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.4,
-        max_tokens=16384,
+    return _call_openai_compatible(
+        system, user,
+        base_url="https://api.openai.com/v1",
+        api_key=api_key,
+        model=os.getenv("OPENAI_MODEL", "gpt-4o"),
     )
-    return response.choices[0].message.content
 
+
+def _call_anthropic(system: str, user: str) -> str:
+    """Anthropic Claude via the anthropic SDK."""
+    import anthropic
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set in environment / .env")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+        max_tokens=16384,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+        temperature=0.4,
+    )
+    return response.content[0].text
+
+
+def _call_groq(system: str, user: str) -> str:
+    """Groq-hosted models (extremely fast cloud inference)."""
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY not set in environment / .env")
+
+    return _call_openai_compatible(
+        system, user,
+        base_url="https://api.groq.com/openai/v1",
+        api_key=api_key,
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    )
+
+
+def _call_together(system: str, user: str) -> str:
+    """Together AI hosted models."""
+    api_key = os.getenv("TOGETHER_API_KEY")
+    if not api_key:
+        raise RuntimeError("TOGETHER_API_KEY not set in environment / .env")
+
+    return _call_openai_compatible(
+        system, user,
+        base_url="https://api.together.xyz/v1",
+        api_key=api_key,
+        model=os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+    )
+
+
+# ──────────────────────────────────────────────
+# Provider registry
+# ──────────────────────────────────────────────
 
 PROVIDERS = {
-    "gemini": _call_gemini,
-    "openai": _call_openai,
+    # Local (default)
+    "vllm":      _call_vllm,
+    "ollama":    _call_ollama,
+    # Cloud
+    "gemini":    _call_gemini,
+    "openai":    _call_openai,
+    "anthropic": _call_anthropic,
+    "groq":      _call_groq,
+    "together":  _call_together,
 }
 
 
@@ -119,9 +249,12 @@ def generate_qna_markdown(
     provider: str | None = None,
 ) -> str:
     """Send the extracted text to the configured LLM and return QNA markdown."""
-    provider = provider or os.getenv("LLM_PROVIDER", "gemini")
+    provider = provider or os.getenv("LLM_PROVIDER", "vllm")
     if provider not in PROVIDERS:
-        raise ValueError(f"Unknown LLM provider '{provider}'. Choose from: {list(PROVIDERS.keys())}")
+        raise ValueError(
+            f"Unknown LLM provider '{provider}'. "
+            f"Choose from: {', '.join(PROVIDERS.keys())}"
+        )
 
     call_fn = PROVIDERS[provider]
     user_prompt = build_user_prompt(subject_name, chapter_name, extracted_text)
@@ -133,9 +266,10 @@ def generate_qna_markdown(
 # ──────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Quick test: python generate_qna.py "Pattern Recognition" "Introduction" "some text..."
     if len(sys.argv) < 4:
         print("Usage: python generate_qna.py <subject> <chapter> <text_or_file>")
+        print(f"\nAvailable providers: {', '.join(PROVIDERS.keys())}")
+        print(f"Current default: {os.getenv('LLM_PROVIDER', 'vllm')}")
         sys.exit(1)
 
     subject, chapter, text_arg = sys.argv[1], sys.argv[2], sys.argv[3]

@@ -31,7 +31,8 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env and add your Gemini or OpenAI API key
+# Edit .env — set LLM_PROVIDER and add the matching API key
+# Supported providers: gemini, openai, anthropic, groq, together, ollama
 ```
 
 ### 3. Run the Pipeline
@@ -47,7 +48,8 @@ python scripts/run_pipeline.py --subject "PatternRecognition"
 python scripts/run_pipeline.py --force
 
 # Use a specific LLM provider
-python scripts/run_pipeline.py --provider openai
+python scripts/run_pipeline.py --provider groq
+# Providers: gemini | openai | anthropic | groq | together | ollama
 ```
 
 ### 4. Sync to Git
@@ -78,5 +80,5 @@ You can also trigger runs manually from the Actions tab.
 ## Requirements
 
 - Python 3.10+
-- A Gemini API key (free tier works) **or** an OpenAI API key
+- An API key for at least one provider: **Gemini** (free tier), **OpenAI**, **Anthropic**, **Groq** (free tier), or **Together AI** — or a local **Ollama** install (no key needed)
 - System dependencies for PDF rendering: `libpango`, `libharfbuzz` (installed automatically in CI)
