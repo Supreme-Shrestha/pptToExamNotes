@@ -3,23 +3,26 @@ generate_qna.py — Uses an LLM to transform extracted lecture text into a
 comprehensive QNA study guide in Markdown.
 
 Supported providers:
-  LOCAL (default — no API key needed):
+  LOCAL (default — no API key needed, no extra pip packages):
   • vllm     — Local vLLM server (recommended for A100 GPUs)
   • ollama   — Local Ollama server
 
-  CLOUD (API key required):
-  • gemini   — Google Gemini
-  • openai   — OpenAI
-  • anthropic— Anthropic Claude
-  • groq     — Groq (fast cloud Llama)
-  • together — Together AI
+  CLOUD (API key required, may need extra pip packages):
+  • gemini   — Google Gemini      (pip install google-generativeai)
+  • openai   — OpenAI             (pip install openai)
+  • anthropic— Anthropic Claude   (pip install anthropic)
+  • groq     — Groq cloud Llama   (pip install openai)
+  • together — Together AI        (pip install openai)
 """
 import os
 import sys
+import json
 import textwrap
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
+log = logging.getLogger("generate_qna")
 
 # ──────────────────────────────────────────────
 # Prompt templates
@@ -73,30 +76,40 @@ def build_user_prompt(subject_name: str, chapter_name: str, extracted_text: str)
 
 
 # ──────────────────────────────────────────────
-# Helper: OpenAI-compatible caller
+# Helper: lightweight HTTP caller (no openai SDK needed)
 # ──────────────────────────────────────────────
 
-def _call_openai_compatible(
+def _call_chat_api(
     system: str, user: str, base_url: str, api_key: str, model: str
 ) -> str:
-    """Generic caller for any OpenAI-compatible API endpoint."""
-    from openai import OpenAI
+    """Call any OpenAI-compatible chat/completions endpoint using requests.
+    Works with vLLM, Ollama, Groq, Together, and OpenAI without needing
+    the openai Python SDK (avoids version conflicts with vLLM)."""
+    import requests
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    payload = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        temperature=0.4,
-        max_tokens=16384,
-    )
-    return response.choices[0].message.content
+        "temperature": 0.4,
+        "max_tokens": 16384,
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=600)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
 
 
 # ──────────────────────────────────────────────
-# LOCAL providers (no API key needed)
+# LOCAL providers (no API key, no extra packages)
 # ──────────────────────────────────────────────
 
 def _call_vllm(system: str, user: str) -> str:
@@ -112,12 +125,7 @@ def _call_vllm(system: str, user: str) -> str:
     """
     base_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
     model = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-72B-Instruct-AWQ")
-    return _call_openai_compatible(
-        system, user,
-        base_url=base_url,
-        api_key="not-needed",
-        model=model,
-    )
+    return _call_chat_api(system, user, base_url, "not-needed", model)
 
 
 def _call_ollama(system: str, user: str) -> str:
@@ -129,12 +137,7 @@ def _call_ollama(system: str, user: str) -> str:
     """
     base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     model = os.getenv("OLLAMA_MODEL", "qwen2.5:72b")
-    return _call_openai_compatible(
-        system, user,
-        base_url=base_url,
-        api_key="ollama",
-        model=model,
-    )
+    return _call_chat_api(system, user, base_url, "ollama", model)
 
 
 # ──────────────────────────────────────────────
@@ -142,7 +145,8 @@ def _call_ollama(system: str, user: str) -> str:
 # ──────────────────────────────────────────────
 
 def _call_gemini(system: str, user: str) -> str:
-    """Google Gemini via the google-generativeai SDK."""
+    """Google Gemini via the google-generativeai SDK.
+    Install: pip install google-generativeai"""
     import google.generativeai as genai
 
     api_key = os.getenv("GEMINI_API_KEY")
@@ -165,12 +169,12 @@ def _call_gemini(system: str, user: str) -> str:
 
 
 def _call_openai(system: str, user: str) -> str:
-    """OpenAI (GPT-4o) via the openai SDK."""
+    """OpenAI (GPT-4o) via HTTP (no SDK needed)."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not set in environment / .env")
 
-    return _call_openai_compatible(
+    return _call_chat_api(
         system, user,
         base_url="https://api.openai.com/v1",
         api_key=api_key,
@@ -179,7 +183,8 @@ def _call_openai(system: str, user: str) -> str:
 
 
 def _call_anthropic(system: str, user: str) -> str:
-    """Anthropic Claude via the anthropic SDK."""
+    """Anthropic Claude via the anthropic SDK.
+    Install: pip install anthropic"""
     import anthropic
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -203,7 +208,7 @@ def _call_groq(system: str, user: str) -> str:
     if not api_key:
         raise RuntimeError("GROQ_API_KEY not set in environment / .env")
 
-    return _call_openai_compatible(
+    return _call_chat_api(
         system, user,
         base_url="https://api.groq.com/openai/v1",
         api_key=api_key,
@@ -217,7 +222,7 @@ def _call_together(system: str, user: str) -> str:
     if not api_key:
         raise RuntimeError("TOGETHER_API_KEY not set in environment / .env")
 
-    return _call_openai_compatible(
+    return _call_chat_api(
         system, user,
         base_url="https://api.together.xyz/v1",
         api_key=api_key,
