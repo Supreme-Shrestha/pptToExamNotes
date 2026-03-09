@@ -46,11 +46,20 @@ RESEARCH_SYSTEM_PROMPT = textwrap.dedent("""\
        full content.
     4. Focus on: definitions, theorems, formulas/derivations, algorithms,
        worked examples, comparisons, and real-world applications.
-    5. When you have gathered enough information for EVERY topic in the
+    5. VERY IMPORTANT: You MUST use your tools. Do not just talk about
+       searching. Use the web_search tool.
+    6. When you have gathered enough information for EVERY topic in the
        chapter, call done() with your organized research notes.
 
-    Be thorough. Your research notes will be used to generate a comprehensive
-    exam study guide. Missing information means the student fails.
+    Rules for Tool Use:
+    • Every turn MUST result in a tool call until you are finished.
+    • If a search returns no results, try broader or different keywords.
+    • Consolidate everything into a structure like:
+      # [Topic Name]
+      ## Definitions
+      ## Formulas/Theorems
+      ## Examples
+      ...
 """)
 
 
@@ -179,15 +188,24 @@ def run_research_agent(
         tool_calls = message.get("tool_calls")
 
         if not tool_calls:
-            # No tool calls — LLM responded with text
+            # No tool calls — LLM responded with text only
             content = message.get("content", "")
             if content:
                 log.info(f"  💬 Agent response (no tool call): {content[:100]}...")
-                # If the agent is just talking, it may be done
-                # Check if it's actually providing research notes
-                if len(content) > 500:
+                
+                # If the agent is actually providing research notes in text, we're done
+                if "RESEARCH NOTES" in content.upper() or len(content) > 1000:
                     log.info("  ✓ Agent provided research notes in text form")
                     return content
+                
+                # Otherwise, nudge the agent to use its tools
+                messages.append({
+                    "role": "user",
+                    "content": "You haven't called the done() tool or any research tools. If you are finished, call done(research_notes). If you need more info, use web_search or read_webpage."
+                })
+                continue
+            
+            # If no content and no tools, something is wrong
             break
 
         # Execute each tool call

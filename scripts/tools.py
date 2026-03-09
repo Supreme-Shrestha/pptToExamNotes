@@ -99,7 +99,7 @@ def tool_web_search(query: str, max_results: int = 6) -> str:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
     except Exception as e:
-        return f"[Search error: {e}]"
+        return f"[SEARCH ERROR: {e}]. The search engine is temporarily unavailable or rate-limited. Please try a different query or proceed with read_webpage if you have a URL, or call done() if you have enough info."
 
     if not results:
         return "[No results found. Try a different query.]"
