@@ -5,7 +5,7 @@ tools.py — Tools available to the research agent.
   • read_webpage(url)   — Fetch and extract clean text from a URL
   • done(notes)         — Signal that research is complete
 
-Install: pip install duckduckgo-search beautifulsoup4
+Install: pip install ddgs beautifulsoup4
 """
 import logging
 import json
@@ -93,7 +93,7 @@ TOOL_DEFINITIONS = [
 
 def tool_web_search(query: str, max_results: int = 6) -> str:
     """Execute a web search and return formatted results."""
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     try:
         with DDGS() as ddgs:
