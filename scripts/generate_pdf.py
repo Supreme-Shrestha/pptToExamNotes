@@ -103,6 +103,15 @@ th {
 tr:nth-child(even) {
     background: #f9f9f9;
 }
+
+img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    margin: 16px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: block;
+}
 """
 
 
@@ -122,8 +131,11 @@ def md_to_pdf(md_content: str, output_path: str) -> str:
 </body>
 </html>"""
 
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    HTML(string=full_html).write_pdf(output_path, stylesheets=[WCSS(string=CSS)])
+    # WeasyPrint needs a base_url to resolve relative paths like `assets/img.png`
+    base_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(base_dir, exist_ok=True)
+    
+    HTML(string=full_html, base_url=base_dir).write_pdf(output_path, stylesheets=[WCSS(string=CSS)])
     return output_path
 
 

@@ -9,8 +9,8 @@ cd "$REPO_ROOT"
 
 echo "📂 Working in: $REPO_ROOT"
 
-# Stage all generated QNA files (PDFs + Markdown intermediates)
-git add Subjects/**/*_QNA.pdf Subjects/**/*_QNA.md 2>/dev/null || true
+# Stage all generated QNA files (PDFs + Markdown intermediates + images)
+git add Subjects/**/*_QNA.pdf Subjects/**/*_QNA.md Subjects/**/assets/* 2>/dev/null || true
 
 # Check if there are changes to commit
 if git diff --cached --quiet; then

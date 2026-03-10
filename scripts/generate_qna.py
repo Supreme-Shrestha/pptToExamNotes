@@ -48,6 +48,9 @@ SYSTEM_PROMPT = textwrap.dedent("""\
       depict based on the surrounding text and chapter context, and generate
       questions about them (e.g., "Explain the architecture shown in the
       block diagram for..." or "Draw and label the flowchart for...").
+    • When you see a specific image path like "[Visual Feature: ... saved at assets/img.png]",
+      you MUST embed that exact image in your Markdown answer where relevant,
+      using standard Markdown syntax: `![Image Description](assets/img.png)`
     • When the OCR text looks garbled or has unusual characters, use your
       knowledge to reconstruct the intended meaning from context.
     • Answers must be detailed, academically rigorous, and directly useful for
@@ -74,8 +77,10 @@ def build_user_prompt(subject_name: str, chapter_name: str, extracted_text: str)
            Every single page must contribute at least one question.
         2. Identify every core topic discussed or implied in this material.
         3. For any [Visual: ...] annotations, infer the diagram content from
-           context and create questions that ask the student to explain, draw,
-           or compare those visuals.
+           context and create questions.
+        4. If a [Visual Feature: ... saved at assets/...] annotation is present,
+           and it is highly relevant to the concept you are explaining in an
+           answer, EMBED it in your answer exactly like: `![Diagram](assets/...)`.
         4. Complete any missing concepts, definitions, formulas, derivations,
            algorithms, comparisons, or broad context necessary for a student
            to fully understand the chapter.
